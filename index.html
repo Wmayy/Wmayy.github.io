@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="theme-color" content="#c41e3a">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="双色球助手">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="application-name" content="双色球助手">
+    <meta name="msapplication-TileColor" content="#c41e3a">
+    <meta name="msapplication-square70x70logo" content="icons/icon-192.png">
+    <meta name="msapplication-square150x150logo" content="icons/icon-192.png">
+    <link rel="manifest" href="manifest.json">
+    <link rel="apple-touch-icon" href="icons/icon-192.png">
+    <link rel="stylesheet" href="css/style.css">
+    <title>双色球助手</title>
+</head>
+<body>
+    <!-- 顶部导航 -->
+    <header class="app-header">
+        <div class="header-title">双色球助手</div>
+        <div class="header-sub" id="headerDate">--</div>
+    </header>
+
+    <!-- 主内容区 -->
+    <main class="app-main">
+        <!-- 页面：首页 -->
+        <section class="page active" id="page-home">
+            <!-- 最新开奖卡片 -->
+            <div class="card latest-card">
+                <div class="card-header">
+                    <span class="card-title">最新开奖</span>
+                    <span class="issue-badge" id="latestIssue">第 -- 期</span>
+                </div>
+                <div class="draw-date" id="latestDate">加载中...</div>
+                <div class="ball-row" id="latestBalls">
+                    <div class="ball loading">·</div>
+                </div>
+                <div class="prize-pool" id="prizePool">奖池：--</div>
+                <div class="refresh-actions">
+                    <button class="btn-refresh" id="btnRefresh" onclick="refreshData()">
+                        <span>🔄 刷新数据</span>
+                    </button>
+                    <button class="btn-refresh" onclick="showManualUpdate()">
+                        <span>✏️ 手动更新</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- 快捷功能 -->
+            <div class="quick-actions">
+                <div class="action-item" onclick="switchPage('scan')">
+                    <div class="action-icon">📷</div>
+                    <div class="action-label">扫码验票</div>
+                </div>
+                <div class="action-item" onclick="switchPage('recommend')">
+                    <div class="action-icon">🎯</div>
+                    <div class="action-label">智能选号</div>
+                </div>
+                <div class="action-item" onclick="switchPage('history')">
+                    <div class="action-icon">📊</div>
+                    <div class="action-label">历史开奖</div>
+                </div>
+                <div class="action-item" onclick="switchPage('manual')">
+                    <div class="action-icon">✏️</div>
+                    <div class="action-label">手动选号</div>
+                </div>
+            </div>
+
+            <!-- 安装提示 -->
+            <div class="card install-card" id="installCard">
+                <div class="install-icon">📱</div>
+                <div class="install-info">
+                    <div class="install-title">安装到手机桌面</div>
+                    <div class="install-desc">添加后可全屏使用，支持离线</div>
+                </div>
+                <button class="btn-install" onclick="showInstallGuide()">查看方法</button>
+            </div>
+
+            <!-- 中奖规则 -->
+            <div class="card rules-card">
+                <div class="card-header">
+                    <span class="card-title">中奖规则</span>
+                </div>
+                <div class="rules-list">
+                    <div class="rule-item"><span class="rule-level">一等奖</span><span>6红+1蓝</span></div>
+                    <div class="rule-item"><span class="rule-level">二等奖</span><span>6红+0蓝</span></div>
+                    <div class="rule-item"><span class="rule-level">三等奖</span><span>5红+1蓝</span></div>
+                    <div class="rule-item"><span class="rule-level">四等奖</span><span>5红+0蓝 / 4红+1蓝</span></div>
+                    <div class="rule-item"><span class="rule-level">五等奖</span><span>4红+0蓝 / 3红+1蓝</span></div>
+                    <div class="rule-item"><span class="rule-level">六等奖</span><span>2红+1蓝 / 1红+1蓝 / 0红+1蓝</span></div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 页面：扫码验票 -->
+        <section class="page" id="page-scan">
+            <div class="card">
+                <div class="card-header">
+                    <span class="card-title">扫码验票</span>
+                </div>
+                <p class="tip-text">将彩票二维码/条码对准扫描框，或手动输入号码</p>
+                <div class="scanner-container" id="scannerContainer">
+                    <video id="scannerVideo" playsinline></video>
+                    <canvas id="scannerCanvas" style="display:none"></canvas>
+                    <div class="scan-frame">
+                        <div class="scan-line"></div>
+                    </div>
+                    <div class="scanner-placeholder" id="scannerPlaceholder">
+                        <div class="placeholder-icon">📷</div>
+                        <div>点击下方按钮启动相机</div>
+                    </div>
+                </div>
+                <div class="scanner-actions">
+                    <button class="btn-primary" id="btnStartScan" onclick="startScanner()">启动扫码</button>
+                    <button class="btn-secondary" id="btnStopScan" onclick="stopScanner()" style="display:none">停止扫码</button>
+                </div>
+                <div class="divider"><span>或手动输入</span></div>
+                <div class="manual-input">
+                    <div class="input-label">红球（6个，1-33）</div>
+                    <div class="ball-inputs" id="redInputs"></div>
+                    <div class="input-label">蓝球（1个，1-16）</div>
+                    <div class="ball-inputs single" id="blueInput"></div>
+                    <button class="btn-primary full" onclick="checkManualTicket()">查验中奖</button>
+                </div>
+                <div class="result-card" id="scanResult" style="display:none">
+                    <div class="result-title" id="resultTitle">--</div>
+                    <div class="result-detail" id="resultDetail">--</div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 页面：智能选号 -->
+        <section class="page" id="page-recommend">
+            <div class="card">
+                <div class="card-header">
+                    <span class="card-title">智能选号推荐</span>
+                </div>
+                <p class="tip-text">基于历史开奖数据过滤，排除最大连号、全奇/全偶组合</p>
+                <div class="recommend-settings">
+                    <div class="setting-row">
+                        <label>推荐注数</label>
+                        <select id="recommendCount">
+                            <option value="5">5 注</option>
+                            <option value="3">3 注</option>
+                            <option value="10">10 注</option>
+                        </select>
+                    </div>
+                    <div class="setting-row">
+                        <label>过滤往期中奖号</label>
+                        <label class="switch">
+                            <input type="checkbox" id="filterHistory" checked>
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+                    <div class="setting-row">
+                        <label>趋势加权选号</label>
+                        <label class="switch">
+                            <input type="checkbox" id="trendWeight" checked>
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+                    <div class="setting-row">
+                        <label>排除最大连号</label>
+                        <label class="switch">
+                            <input type="checkbox" id="excludeConsecutive" checked>
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+                    <div class="setting-row">
+                        <label>排除全奇/全偶</label>
+                        <label class="switch">
+                            <input type="checkbox" id="excludeOddEven" checked>
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+                </div>
+                <button class="btn-primary full" onclick="generateRecommendations()">生成推荐号码</button>
+                <div class="recommend-list" id="recommendList"></div>
+            </div>
+
+            <!-- 冷热号分析 -->
+            <div class="card">
+                <div class="card-header">
+                    <span class="card-title">冷热号分析（近50期）</span>
+                </div>
+                <div class="hot-cold-section">
+                    <div class="hc-label">🔥 热号（出现最多）</div>
+                    <div class="hc-balls" id="hotBalls"></div>
+                </div>
+                <div class="hot-cold-section">
+                    <div class="hc-label">❄️ 冷号（出现最少）</div>
+                    <div class="hc-balls" id="coldBalls"></div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 页面：历史开奖 -->
+        <section class="page" id="page-history">
+            <div class="card">
+                <div class="card-header">
+                    <span class="card-title">历史开奖记录</span>
+                    <span class="data-count" id="historyCount">共 0 期</span>
+                </div>
+                <div class="history-list" id="historyList">
+                    <div class="loading-text">加载中...</div>
+                </div>
+                <button class="btn-secondary full" id="btnLoadMore" onclick="loadMoreHistory()" style="display:none">加载更多</button>
+            </div>
+        </section>
+
+        <!-- 页面：手动选号 -->
+        <section class="page" id="page-manual">
+            <div class="card">
+                <div class="card-header">
+                    <span class="card-title">我的选号</span>
+                </div>
+                <p class="tip-text">点击号码球选择，选满6个红球和1个蓝球</p>
+                <div class="picker-section">
+                    <div class="picker-label">红球（1-33）</div>
+                    <div class="ball-picker red" id="redPicker"></div>
+                    <div class="picker-label">蓝球（1-16）</div>
+                    <div class="ball-picker blue" id="bluePicker"></div>
+                </div>
+                <div class="selected-preview" id="selectedPreview">
+                    <span class="preview-label">已选：</span>
+                    <span id="selectedBalls">请选择号码</span>
+                </div>
+                <div class="manual-actions">
+                    <button class="btn-secondary" onclick="clearSelection()">清空</button>
+                    <button class="btn-secondary" onclick="randomSelect()">机选</button>
+                    <button class="btn-primary" onclick="saveSelection()">保存选号</button>
+                </div>
+                <div class="saved-list" id="savedList"></div>
+            </div>
+        </section>
+    </main>
+
+    <!-- 底部导航 -->
+    <nav class="bottom-nav">
+        <div class="nav-item active" data-page="home" onclick="switchPage('home')">
+            <div class="nav-icon">🏠</div>
+            <div class="nav-label">首页</div>
+        </div>
+        <div class="nav-item" data-page="scan" onclick="switchPage('scan')">
+            <div class="nav-icon">📷</div>
+            <div class="nav-label">验票</div>
+        </div>
+        <div class="nav-item" data-page="recommend" onclick="switchPage('recommend')">
+            <div class="nav-icon">🎯</div>
+            <div class="nav-label">选号</div>
+        </div>
+        <div class="nav-item" data-page="history" onclick="switchPage('history')">
+            <div class="nav-icon">📊</div>
+            <div class="nav-label">历史</div>
+        </div>
+    </nav>
+
+    <!-- 手动更新开奖弹窗 -->
+    <div class="modal-overlay" id="manualUpdateModal" onclick="closeManualUpdate(event)">
+        <div class="modal-content" onclick="event.stopPropagation()">
+            <div class="modal-header">
+                <span class="modal-title">手动更新最新开奖</span>
+                <span class="modal-close" onclick="closeManualUpdate()">×</span>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-info" style="margin-bottom:16px;">
+                    💡 网络刷新失败时，可从中国福利彩票官网（cwl.gov.cn）查看最新开奖号码后手动输入。
+                </div>
+                <div class="manual-update-form">
+                    <div class="form-row">
+                        <label>期号</label>
+                        <input type="text" id="manualIssue" placeholder="例如：2026097" maxlength="10">
+                    </div>
+                    <div class="form-row">
+                        <label>开奖日期</label>
+                        <input type="date" id="manualDate">
+                    </div>
+                    <div class="form-label">红球（6个，1-33）</div>
+                    <div class="ball-inputs" id="manualRedInputs"></div>
+                    <div class="form-label">蓝球（1个，1-16）</div>
+                    <div class="ball-inputs single" id="manualBlueInput"></div>
+                    <button class="btn-primary full" onclick="submitManualUpdate()">确认更新</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast 提示 -->
+    <div class="toast" id="toast"></div>
+
+    <!-- 安装指南弹窗 -->
+    <div class="modal-overlay" id="installModal" onclick="closeInstallGuide(event)">
+        <div class="modal-content" onclick="event.stopPropagation()">
+            <div class="modal-header">
+                <span class="modal-title">安装到手机桌面</span>
+                <span class="modal-close" onclick="closeInstallGuide()">×</span>
+            </div>
+            <div class="modal-body">
+                <div class="guide-tabs">
+                    <button class="guide-tab active" onclick="switchGuideTab('huawei')">华为/鸿蒙</button>
+                    <button class="guide-tab" onclick="switchGuideTab('android')">其他安卓</button>
+                    <button class="guide-tab" onclick="switchGuideTab('ios')">iPhone</button>
+                </div>
+                <div class="guide-content" id="guide-huawei">
+                    <div class="guide-step"><span class="step-num">1</span>用华为浏览器打开本页面</div>
+                    <div class="guide-step"><span class="step-num">2</span>点击右下角 <b>四个点</b>（菜单按钮）</div>
+                    <div class="guide-step"><span class="step-num">3</span>选择 <b>「添加到桌面」</b></div>
+                    <div class="guide-step"><span class="step-num">4</span>点击「添加」，桌面即出现应用图标</div>
+                    <div class="guide-tip">💡 鸿蒙系统支持完美，安装后全屏运行，和原生App一致</div>
+                </div>
+                <div class="guide-content" id="guide-android" style="display:none">
+                    <div class="guide-step"><span class="step-num">1</span>用 Chrome 浏览器打开本页面</div>
+                    <div class="guide-step"><span class="step-num">2</span>点击右上角 <b>三个点</b></div>
+                    <div class="guide-step"><span class="step-num">3</span>选择 <b>「添加到主屏幕」</b></div>
+                    <div class="guide-step"><span class="step-num">4</span>确认添加即可</div>
+                </div>
+                <div class="guide-content" id="guide-ios" style="display:none">
+                    <div class="guide-step"><span class="step-num">1</span>用 Safari 浏览器打开本页面</div>
+                    <div class="guide-step"><span class="step-num">2</span>点击底部 <b>分享按钮</b>（方框+箭头）</div>
+                    <div class="guide-step"><span class="step-num">3</span>选择 <b>「添加到主屏幕」</b></div>
+                    <div class="guide-step"><span class="step-num">4</span>点击「添加」即可</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 库 -->
+    <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
+    <script>
+    // 数据修复：检测并清除损坏/过期的本地数据
+    (function() {
+        try {
+            var DATA_VERSION = '20260821_v2'; // 数据版本号，更新内置数据时修改此值
+            var storedVersion = localStorage.getItem('ssq_data_version');
+            var raw = localStorage.getItem('ssq_history_data');
+            var needClear = false;
+
+            // 版本号变化时清除旧数据
+            if (storedVersion !== DATA_VERSION) {
+                needClear = true;
+            }
+
+            // 检测损坏数据
+            if (raw && !needClear) {
+                var data = JSON.parse(raw);
+                if (Array.isArray(data) && data.length > 0) {
+                    var first = data[0];
+                    if (!first.issue || !/^\d{5,}$/.test(String(first.issue))) {
+                        needClear = true;
+                    }
+                }
+            }
+
+            if (needClear) {
+                console.warn('清除旧的历史数据，加载最新内置数据');
+                localStorage.removeItem('ssq_history_data');
+                localStorage.setItem('ssq_data_version', DATA_VERSION);
+            }
+        } catch(e) {
+            localStorage.removeItem('ssq_history_data');
+        }
+    })();
+    </script>
+    <script src="js/lottery.js"></script>
+    <script src="js/scanner.js"></script>
+    <script src="js/app.js"></script>
+    <script>
+    if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('service-worker.js').then(function(reg) {
+            // 检测到更新时立即激活
+            if (reg.waiting) {
+                reg.waiting.postMessage({type: 'SKIP_WAITING'});
+            }
+            reg.addEventListener('updatefound', function() {
+                if (reg.installing) {
+                    reg.installing.addEventListener('statechange', function() {
+                        if (this.state === 'installed' && navigator.serviceWorker.controller) {
+                            // 新版本已安装，立即激活并刷新
+                            reg.waiting.postMessage({type: 'SKIP_WAITING'});
+                        }
+                    });
+                }
+            });
+        }).catch(function() {});
+        // 新的 Service Worker 激活后自动刷新
+        var refreshing = false;
+        navigator.serviceWorker.addEventListener('controllerchange', function() {
+            if (!refreshing) {
+                refreshing = true;
+                location.reload();
+            }
+        });
+    }
+    </script>
+</body>
+</html>
