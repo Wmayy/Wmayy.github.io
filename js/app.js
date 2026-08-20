@@ -281,8 +281,10 @@ function showScanResult(result, myRed, myBlue, draw) {
 let ocrInterval = null;
 let isRecognizing = false;
 let ocrWorker = null;
+let autoCaptureTimer = null;
+let countdownTimer = null;
 
-/** 启动扫码（实时OCR识别） */
+/** 启动扫码（自动拍照识别） */
 async function startScanner() {
     const result = await Scanner.start();
     if (result.success) {
@@ -291,13 +293,106 @@ async function startScanner() {
         document.getElementById('btnStopScan').style.display = 'inline-block';
         document.getElementById('scannerPlaceholder').style.display = 'none';
 
-        // 初始化 OCR worker（预加载，提高首次识别速度）
+        // 初始化 OCR worker
         initOCRWorker();
 
-        // 启动实时识别循环
-        startOCRLoop();
+        // 启动自动拍照识别（倒计时3秒后自动拍照）
+        startAutoCapture();
     } else {
         showToast(result.message);
+    }
+}
+
+/** 启动自动拍照倒计时 */
+function startAutoCapture() {
+    if (autoCaptureTimer || countdownTimer) return;
+
+    const statusEl = document.getElementById('ocrStatus');
+    const statusText = document.getElementById('ocrStatusText');
+    statusEl.style.display = 'block';
+
+    let countdown = 3;
+    statusText.textContent = `调整位置，${countdown}秒后自动拍照识别...`;
+
+    countdownTimer = setInterval(() => {
+        countdown--;
+        if (countdown > 0) {
+            statusText.textContent = `调整位置，${countdown}秒后自动拍照识别...`;
+        } else {
+            clearInterval(countdownTimer);
+            countdownTimer = null;
+            // 倒计时结束，自动拍照识别
+            autoCaptureAndRecognize();
+        }
+    }, 1000);
+}
+
+/** 自动拍照并识别 */
+async function autoCaptureAndRecognize() {
+    if (isRecognizing || !Scanner.scanning) return;
+
+    const video = document.getElementById('scannerVideo');
+    if (!video || !video.videoWidth) {
+        // 相机不可用，重新倒计时
+        startAutoCapture();
+        return;
+    }
+
+    const canvas = document.getElementById('scannerCanvas');
+    const ctx = canvas.getContext('2d');
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    ctx.drawImage(video, 0, 0);
+
+    const statusText = document.getElementById('ocrStatusText');
+    statusText.textContent = '正在识别...';
+
+    isRecognizing = true;
+
+    try {
+        let text;
+        if (ocrWorker) {
+            const { data } = await ocrWorker.recognize(canvas);
+            text = data.text;
+        } else if (typeof Tesseract !== 'undefined') {
+            const result = await Tesseract.recognize(canvas, 'eng', {
+                tessedit_char_whitelist: 'ABCDE0123456789.-:()（） ',
+                preserve_interword_spaces: '1'
+            });
+            text = result.data.text;
+        } else {
+            throw new Error('识别引擎未加载');
+        }
+
+        console.log('自动拍照识别结果:', text);
+
+        const tickets = Lottery.parseTicketsFromText(text);
+
+        if (tickets.length > 0) {
+            // 识别成功，停止扫描
+            stopScanner();
+            const multiResult = Lottery.checkMultipleTickets(tickets);
+            renderMultiResult(multiResult);
+            showToast(`成功识别 ${tickets.length} 注号码`);
+            return;
+        }
+
+        // 未识别到，2秒后重新倒计时
+        statusText.textContent = '未识别到号码，2秒后重新拍照...';
+        autoCaptureTimer = setTimeout(() => {
+            autoCaptureTimer = null;
+            if (Scanner.scanning) startAutoCapture();
+        }, 2000);
+
+    } catch(e) {
+        console.error('自动拍照识别失败:', e);
+        statusText.textContent = '识别失败，2秒后重试...';
+        autoCaptureTimer = setTimeout(() => {
+            autoCaptureTimer = null;
+            if (Scanner.scanning) startAutoCapture();
+        }, 2000);
+    } finally {
+        isRecognizing = false;
     }
 }
 
@@ -317,85 +412,13 @@ async function initOCRWorker() {
     }
 }
 
-/** 启动实时识别循环 */
-function startOCRLoop() {
-    if (ocrInterval) return;
-    const statusEl = document.getElementById('ocrStatus');
-    const statusText = document.getElementById('ocrStatusText');
-    statusEl.style.display = 'block';
-    statusText.textContent = '正在扫描识别，请对准号码区域...';
-
-    // 每1.5秒识别一次（OCR比较耗时，不能太频繁）
-    ocrInterval = setInterval(() => {
-        if (!isRecognizing && Scanner.scanning) {
-            recognizeFrame();
-        }
-    }, 1500);
-}
-
-/** 识别当前视频帧 */
-async function recognizeFrame() {
-    const video = document.getElementById('scannerVideo');
-    if (!video || !video.videoWidth) return;
-
-    isRecognizing = true;
-    const statusText = document.getElementById('ocrStatusText');
-
-    try {
-        const canvas = document.getElementById('scannerCanvas');
-        const ctx = canvas.getContext('2d');
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
-        ctx.drawImage(video, 0, 0);
-
-        statusText.textContent = '识别中...';
-
-        let text;
-        if (ocrWorker) {
-            // 使用预加载的 worker，速度更快
-            const { data } = await ocrWorker.recognize(canvas);
-            text = data.text;
-        } else if (typeof Tesseract !== 'undefined') {
-            // 单次识别模式
-            const result = await Tesseract.recognize(canvas, 'eng', {
-                tessedit_char_whitelist: 'ABCDE0123456789.-:()（） ',
-                preserve_interword_spaces: '1'
-            });
-            text = result.data.text;
-        } else {
-            throw new Error('识别引擎未加载');
-        }
-
-        // 解析彩票号码
-        const tickets = Lottery.parseTicketsFromText(text);
-
-        if (tickets.length > 0) {
-            // 识别到有效号码，停止扫描
-            stopScanner();
-            const multiResult = Lottery.checkMultipleTickets(tickets);
-            renderMultiResult(multiResult);
-            showToast(`成功识别 ${tickets.length} 注号码`);
-            return;
-        }
-
-        statusText.textContent = '正在扫描识别，请对准号码区域...';
-
-    } catch(e) {
-        console.warn('帧识别失败:', e);
-        statusText.textContent = '扫描中...';
-    } finally {
-        isRecognizing = false;
-    }
-}
-
 /** 停止扫码 */
 function stopScanner() {
     Scanner.stop();
-    // 停止识别循环
-    if (ocrInterval) {
-        clearInterval(ocrInterval);
-        ocrInterval = null;
-    }
+    // 清除所有定时器
+    if (ocrInterval) { clearInterval(ocrInterval); ocrInterval = null; }
+    if (autoCaptureTimer) { clearTimeout(autoCaptureTimer); autoCaptureTimer = null; }
+    if (countdownTimer) { clearInterval(countdownTimer); countdownTimer = null; }
     isRecognizing = false;
     document.getElementById('btnStartScan').style.display = 'inline-block';
     document.getElementById('btnCapture').style.display = 'none';
@@ -404,7 +427,7 @@ function stopScanner() {
     document.getElementById('scannerPlaceholder').style.display = 'flex';
 }
 
-/** 拍照识别（手动触发，实时识别效果不好时使用） */
+/** 拍照识别（手动触发，自动识别效果不好时使用） */
 async function captureAndRecognize() {
     if (isRecognizing) {
         showToast('正在识别中，请稍候...');
@@ -417,11 +440,9 @@ async function captureAndRecognize() {
         return;
     }
 
-    // 暂停实时识别循环
-    if (ocrInterval) {
-        clearInterval(ocrInterval);
-        ocrInterval = null;
-    }
+    // 暂停自动倒计时
+    if (autoCaptureTimer) { clearTimeout(autoCaptureTimer); autoCaptureTimer = null; }
+    if (countdownTimer) { clearInterval(countdownTimer); countdownTimer = null; }
 
     const canvas = document.getElementById('scannerCanvas');
     const ctx = canvas.getContext('2d');
@@ -456,11 +477,10 @@ async function captureAndRecognize() {
         const tickets = Lottery.parseTicketsFromText(text);
 
         if (tickets.length === 0) {
-            statusText.textContent = '未识别到有效号码，请调整位置后重试';
-            setTimeout(() => {
-                statusEl.style.display = 'none';
-                // 恢复实时识别循环
-                if (Scanner.scanning) startOCRLoop();
+            statusText.textContent = '未识别到有效号码，2秒后自动重新拍照...';
+            autoCaptureTimer = setTimeout(() => {
+                autoCaptureTimer = null;
+                if (Scanner.scanning) startAutoCapture();
             }, 2000);
             return;
         }
@@ -473,11 +493,10 @@ async function captureAndRecognize() {
 
     } catch(e) {
         console.error('拍照识别失败:', e);
-        statusText.textContent = '识别失败：' + e.message;
-        setTimeout(() => {
-            statusEl.style.display = 'none';
-            // 恢复实时识别循环
-            if (Scanner.scanning) startOCRLoop();
+        statusText.textContent = '识别失败，2秒后重试...';
+        autoCaptureTimer = setTimeout(() => {
+            autoCaptureTimer = null;
+            if (Scanner.scanning) startAutoCapture();
         }, 2000);
     } finally {
         isRecognizing = false;
