@@ -99,28 +99,36 @@
         <section class="page" id="page-scan">
             <div class="card">
                 <div class="card-header">
-                    <span class="card-title">扫码验票</span>
+                    <span class="card-title">拍照识别验票</span>
                 </div>
-                <div class="alert alert-warning" style="margin-bottom:12px;">
-                    ⚠️ 双色球彩票底部的是<strong>防伪数据码</strong>，不是标准二维码，手机扫码无法识别。请直接在下方<strong>手动输入号码</strong>验票。
+                <div class="alert alert-info" style="margin-bottom:12px;">
+                    📸 对准彩票上的号码区域拍照，自动识别ABCDE五注号码并计算中奖金额。确保号码清晰、光线充足。
                 </div>
                 <div class="scanner-container" id="scannerContainer">
                     <video id="scannerVideo" playsinline></video>
                     <canvas id="scannerCanvas" style="display:none"></canvas>
                     <div class="scan-frame">
                         <div class="scan-line"></div>
+                        <div class="scan-hint">将号码区域对准框内</div>
                     </div>
                     <div class="scanner-placeholder" id="scannerPlaceholder">
-                        <div class="placeholder-icon">📷</div>
-                        <div>扫码功能仅支持标准二维码</div>
-                        <div style="font-size:12px;color:#999;margin-top:4px;">彩票防伪码无法识别，请用下方手动输入</div>
+                        <div class="placeholder-icon">📸</div>
+                        <div>点击下方按钮启动相机</div>
+                        <div style="font-size:12px;color:#999;margin-top:4px;">对准彩票号码区域拍照识别</div>
                     </div>
                 </div>
                 <div class="scanner-actions">
-                    <button class="btn-secondary" id="btnStartScan" onclick="startScanner()">尝试扫码</button>
-                    <button class="btn-secondary" id="btnStopScan" onclick="stopScanner()" style="display:none">停止扫码</button>
+                    <button class="btn-primary" id="btnStartScan" onclick="startScanner()">启动相机</button>
+                    <button class="btn-primary" id="btnCapture" onclick="captureAndRecognize()" style="display:none">📸 拍照识别</button>
+                    <button class="btn-secondary" id="btnStopScan" onclick="stopScanner()" style="display:none">停止</button>
                 </div>
-                <div class="divider"><span>手动输入号码验票</span></div>
+                <div class="ocr-status" id="ocrStatus" style="display:none">
+                    <div class="ocr-loading">
+                        <div class="ocr-spinner"></div>
+                        <span id="ocrStatusText">正在识别文字...</span>
+                    </div>
+                </div>
+                <div class="divider"><span>或手动输入号码验票</span></div>
                 <div class="manual-input" id="manualCheckSection">
                     <div class="input-label">红球（6个，1-33）</div>
                     <div class="ball-inputs" id="redInputs"></div>
@@ -131,6 +139,15 @@
                 <div class="result-card" id="scanResult" style="display:none">
                     <div class="result-title" id="resultTitle">--</div>
                     <div class="result-detail" id="resultDetail">--</div>
+                </div>
+                <!-- 多注识别结果 -->
+                <div class="multi-result" id="multiResult" style="display:none">
+                    <div class="multi-result-header">
+                        <span class="card-title">识别结果</span>
+                        <span class="multi-total" id="multiTotal">共0注</span>
+                    </div>
+                    <div class="multi-result-list" id="multiResultList"></div>
+                    <div class="multi-result-summary" id="multiSummary"></div>
                 </div>
             </div>
         </section>
@@ -332,6 +349,7 @@
 
     <!-- 库 -->
     <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
     <script>
     // 数据修复：检测并清除损坏/过期的本地数据
     (function() {

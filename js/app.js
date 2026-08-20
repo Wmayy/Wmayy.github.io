@@ -279,12 +279,12 @@ function showScanResult(result, myRed, myBlue, draw) {
 
 /** 启动扫码 */
 async function startScanner() {
-    if (typeof jsQR === 'undefined') {
-        showToast('扫码库加载中，请稍后重试');
-        return;
-    }
     const result = await Scanner.start();
-    if (!result.success) {
+    if (result.success) {
+        document.getElementById('btnStartScan').style.display = 'none';
+        document.getElementById('btnCapture').style.display = 'inline-block';
+        document.getElementById('btnStopScan').style.display = 'inline-block';
+    } else {
         showToast(result.message);
     }
 }
@@ -292,6 +292,127 @@ async function startScanner() {
 /** 停止扫码 */
 function stopScanner() {
     Scanner.stop();
+    document.getElementById('btnStartScan').style.display = 'inline-block';
+    document.getElementById('btnCapture').style.display = 'none';
+    document.getElementById('btnStopScan').style.display = 'none';
+}
+
+/** 拍照并OCR识别 */
+async function captureAndRecognize() {
+    const video = document.getElementById('scannerVideo');
+    const canvas = document.getElementById('scannerCanvas');
+    const ctx = canvas.getContext('2d');
+
+    // 设置画布尺寸
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    ctx.drawImage(video, 0, 0);
+
+    // 显示识别状态
+    const statusEl = document.getElementById('ocrStatus');
+    const statusText = document.getElementById('ocrStatusText');
+    statusEl.style.display = 'block';
+    statusText.textContent = '正在加载识别引擎...';
+
+    try {
+        // 检查 Tesseract 是否加载
+        if (typeof Tesseract === 'undefined') {
+            throw new Error('识别引擎加载失败，请检查网络');
+        }
+
+        statusText.textContent = '正在识别文字，请稍候...';
+
+        // 使用 Tesseract 识别数字（只识别数字和字母，提高速度和准确率）
+        const result = await Tesseract.recognize(canvas, 'eng', {
+            logger: m => {
+                if (m.status === 'recognizing text') {
+                    statusText.textContent = `识别中... ${Math.round(m.progress * 100)}%`;
+                }
+            },
+            tessedit_char_whitelist: 'ABCDE0123456789.-:()（） ',
+            preserve_interword_spaces: '1'
+        });
+
+        const text = result.data.text;
+        console.log('OCR识别结果:', text);
+
+        statusText.textContent = '正在解析号码...';
+
+        // 解析彩票号码
+        const tickets = Lottery.parseTicketsFromText(text);
+
+        if (tickets.length === 0) {
+            statusEl.style.display = 'none';
+            showToast('未能识别到有效号码，请对准号码区域重新拍摄');
+            return;
+        }
+
+        // 多注验票
+        const multiResult = Lottery.checkMultipleTickets(tickets);
+        renderMultiResult(multiResult);
+
+        statusEl.style.display = 'none';
+        showToast(`成功识别 ${tickets.length} 注号码`);
+
+    } catch(e) {
+        console.error('OCR识别失败:', e);
+        statusEl.style.display = 'none';
+        showToast('识别失败：' + e.message);
+    }
+}
+
+/** 渲染多注识别结果 */
+function renderMultiResult(multiResult) {
+    const container = document.getElementById('multiResult');
+    const listEl = document.getElementById('multiResultList');
+    const summaryEl = document.getElementById('multiSummary');
+    const totalEl = document.getElementById('multiTotal');
+
+    container.style.display = 'block';
+    totalEl.textContent = `共${multiResult.totalCount}注`;
+
+    let html = '';
+    multiResult.results.forEach(r => {
+        const redBalls = r.red.map(n => `<span class="ball red" style="width:24px;height:24px;font-size:11px;">${String(n).padStart(2,'0')}</span>`).join('');
+        const blueBall = `<span class="ball blue" style="width:24px;height:24px;font-size:11px;">${String(r.blue).padStart(2,'0')}</span>`;
+
+        let resultClass = 'lose';
+        let resultText = '未中奖';
+        if (r.win) {
+            resultClass = r.level <= 2 ? 'jackpot' : 'win';
+            resultText = r.levelName;
+        }
+
+        html += `
+            <div class="multi-ticket-item ${resultClass}">
+                <div class="ticket-label">${r.label}注 ${r.multiplier > 1 ? `(${r.multiplier}倍)` : ''}</div>
+                <div class="ticket-balls">${redBalls} + ${blueBall}</div>
+                <div class="ticket-result">
+                    <span class="ticket-match">红${r.redMatch} 蓝${r.blueMatch}</span>
+                    <span class="ticket-prize ${resultClass}">${resultText} ${r.prizeDisplay !== '0元' ? r.prizeDisplay : ''}</span>
+                </div>
+            </div>
+        `;
+    });
+    listEl.innerHTML = html;
+
+    // 汇总
+    let summaryHtml = '';
+    if (multiResult.winCount > 0) {
+        summaryHtml = `<div class="multi-summary-win">
+            🎉 中奖 ${multiResult.winCount} 注，
+            ${multiResult.hasFloating ? '含浮动奖金（一等奖/二等奖需以官方公告为准），' : ''}
+            固定奖金合计 <strong>${multiResult.totalPrize} 元</strong>
+        </div>`;
+    } else {
+        summaryHtml = `<div class="multi-summary-lose">很遗憾，${multiResult.totalCount}注均未中奖</div>`;
+    }
+    summaryEl.innerHTML = summaryHtml;
+
+    // 滚动到结果
+    setTimeout(() => {
+        container.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 200);
 }
 
 /** 生成推荐号码 */

@@ -1118,3 +1118,156 @@ body {
     font-weight: 600;
 }
 
+/* OCR识别状态 */
+.ocr-status {
+    margin: 16px 0;
+    padding: 16px;
+    background: #f5f5f5;
+    border-radius: 12px;
+    text-align: center;
+}
+
+.ocr-loading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+}
+
+.ocr-spinner {
+    width: 24px;
+    height: 24px;
+    border: 3px solid #ddd;
+    border-top-color: var(--primary);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+/* 扫描框提示 */
+.scan-hint {
+    position: absolute;
+    bottom: 12px;
+    left: 50%;
+    transform: translateX(-50%);
+    color: #fff;
+    font-size: 12px;
+    background: rgba(0,0,0,0.5);
+    padding: 4px 12px;
+    border-radius: 12px;
+    white-space: nowrap;
+}
+
+/* 多注识别结果 */
+.multi-result {
+    margin-top: 16px;
+    padding: 16px;
+    background: #fafafa;
+    border-radius: 12px;
+}
+
+.multi-result-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+}
+
+.multi-total {
+    font-size: 13px;
+    color: var(--text-secondary);
+    background: #eee;
+    padding: 2px 10px;
+    border-radius: 10px;
+}
+
+.multi-result-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.multi-ticket-item {
+    background: #fff;
+    border-radius: 10px;
+    padding: 12px;
+    border-left: 4px solid #ddd;
+}
+
+.multi-ticket-item.win {
+    border-left-color: #4caf50;
+    background: #f1f8f4;
+}
+
+.multi-ticket-item.jackpot {
+    border-left-color: #ff9800;
+    background: #fff8e6;
+}
+
+.ticket-label {
+    font-size: 14px;
+    font-weight: 600;
+    margin-bottom: 8px;
+    color: var(--text);
+}
+
+.ticket-balls {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin-bottom: 8px;
+    flex-wrap: wrap;
+}
+
+.ticket-result {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 13px;
+}
+
+.ticket-match {
+    color: var(--text-secondary);
+}
+
+.ticket-prize.win, .ticket-prize.jackpot {
+    color: #4caf50;
+    font-weight: 600;
+}
+
+.ticket-prize.lose {
+    color: #999;
+}
+
+.multi-result-summary {
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid #eee;
+}
+
+.multi-summary-win {
+    background: #e8f5e9;
+    color: #2e7d32;
+    padding: 12px;
+    border-radius: 8px;
+    font-size: 14px;
+    line-height: 1.6;
+}
+
+.multi-summary-win strong {
+    font-size: 18px;
+    color: #1b5e20;
+}
+
+.multi-summary-lose {
+    background: #f5f5f5;
+    color: #666;
+    padding: 12px;
+    border-radius: 8px;
+    font-size: 14px;
+    text-align: center;
+}
+

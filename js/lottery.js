@@ -476,7 +476,7 @@ const Lottery = {
      * @param {Array} myRed - 我的红球 [6]
      * @param {Number} myBlue - 我的蓝球
      * @param {Object} draw - 开奖号码 {red:[6], blue:1}
-     * @returns {Object} {level, levelName, redMatch, blueMatch, win}
+     * @returns {Object} {level, levelName, redMatch, blueMatch, win, prize}
      */
     checkPrize(myRed, myBlue, draw) {
         const redMatch = myRed.filter(n => draw.red.includes(n)).length;
@@ -484,21 +484,104 @@ const Lottery = {
 
         let level = 0;
         let levelName = '未中奖';
+        let prize = 0;
 
-        if (redMatch === 6 && blueMatch === 1) { level = 1; levelName = '一等奖'; }
-        else if (redMatch === 6 && blueMatch === 0) { level = 2; levelName = '二等奖'; }
-        else if (redMatch === 5 && blueMatch === 1) { level = 3; levelName = '三等奖'; }
-        else if ((redMatch === 5 && blueMatch === 0) || (redMatch === 4 && blueMatch === 1)) { level = 4; levelName = '四等奖'; }
-        else if ((redMatch === 4 && blueMatch === 0) || (redMatch === 3 && blueMatch === 1)) { level = 5; levelName = '五等奖'; }
-        else if ((redMatch === 2 && blueMatch === 1) || (redMatch === 1 && blueMatch === 1) || (redMatch === 0 && blueMatch === 1)) { level = 6; levelName = '六等奖'; }
+        if (redMatch === 6 && blueMatch === 1) { level = 1; levelName = '一等奖'; prize = '浮动'; }
+        else if (redMatch === 6 && blueMatch === 0) { level = 2; levelName = '二等奖'; prize = '浮动'; }
+        else if (redMatch === 5 && blueMatch === 1) { level = 3; levelName = '三等奖'; prize = 3000; }
+        else if ((redMatch === 5 && blueMatch === 0) || (redMatch === 4 && blueMatch === 1)) { level = 4; levelName = '四等奖'; prize = 200; }
+        else if ((redMatch === 4 && blueMatch === 0) || (redMatch === 3 && blueMatch === 1)) { level = 5; levelName = '五等奖'; prize = 10; }
+        else if ((redMatch === 2 && blueMatch === 1) || (redMatch === 1 && blueMatch === 1) || (redMatch === 0 && blueMatch === 1)) { level = 6; levelName = '六等奖'; prize = 5; }
 
         return {
             level,
             levelName,
             redMatch,
             blueMatch,
-            win: level > 0
+            win: level > 0,
+            prize
         };
+    },
+
+    /**
+     * 多注验票
+     * @param {Array} tickets - [{red:[6], blue:1, multiplier:1}]
+     * @param {Object} draw - 开奖号码
+     * @returns {Object} {results:[], totalPrize, winCount, totalCount}
+     */
+    checkMultipleTickets(tickets, draw) {
+        if (!draw) draw = this.getLatest();
+        if (!draw) return { results: [], totalPrize: 0, winCount: 0, totalCount: 0 };
+
+        const results = tickets.map((t, idx) => {
+            const result = this.checkPrize(t.red, t.blue, draw);
+            const multiplier = t.multiplier || 1;
+            let prizeValue = 0;
+            let prizeDisplay = '0元';
+            if (result.prize === '浮动') {
+                prizeDisplay = '浮动奖金';
+            } else if (result.prize > 0) {
+                prizeValue = result.prize * multiplier;
+                prizeDisplay = prizeValue + '元';
+            }
+            return {
+                index: idx + 1,
+                label: t.label || String.fromCharCode(65 + idx),
+                red: t.red,
+                blue: t.blue,
+                multiplier,
+                ...result,
+                prizeValue,
+                prizeDisplay
+            };
+        });
+
+        const winCount = results.filter(r => r.win).length;
+        const fixedPrize = results.reduce((sum, r) => sum + (r.prizeValue || 0), 0);
+        const hasFloating = results.some(r => r.prize === '浮动');
+
+        return {
+            results,
+            totalPrize: fixedPrize,
+            hasFloating,
+            winCount,
+            totalCount: results.length,
+            draw
+        };
+    },
+
+    /**
+     * 从OCR识别的文本中解析彩票号码
+     * 支持格式：A.01 05 07 16 20 22-05 (1)
+     */
+    parseTicketsFromText(text) {
+        if (!text) return [];
+        const tickets = [];
+        const lines = text.split('\n');
+
+        for (const line of lines) {
+            // 匹配 A. 或 A: 开头的行
+            const match = line.match(/^([A-E])[\.:：]\s*(\d{1,2})[\s,，]+(\d{1,2})[\s,，]+(\d{1,2})[\s,，]+(\d{1,2})[\s,，]+(\d{1,2})[\s,，]+(\d{1,2})[\s\-—]+(\d{1,2})/);
+            if (match) {
+                const label = match[1];
+                const red = [
+                    Number(match[2]), Number(match[3]), Number(match[4]),
+                    Number(match[5]), Number(match[6]), Number(match[7])
+                ].sort((a,b) => a-b);
+                const blue = Number(match[8]);
+                // 提取倍数 (1) 或 (2)
+                const multMatch = line.match(/[(\(（](\d+)[)\)）]/);
+                const multiplier = multMatch ? Number(multMatch[1]) : 1;
+
+                // 校验
+                if (red.length === 6 && red.every(n => n >= 1 && n <= 33) &&
+                    blue >= 1 && blue <= 16 && new Set(red).size === 6) {
+                    tickets.push({ label, red, blue, multiplier });
+                }
+            }
+        }
+
+        return tickets;
     },
 
     /**
