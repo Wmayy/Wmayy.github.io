@@ -287,6 +287,7 @@ async function startScanner() {
     const result = await Scanner.start();
     if (result.success) {
         document.getElementById('btnStartScan').style.display = 'none';
+        document.getElementById('btnCapture').style.display = 'inline-block';
         document.getElementById('btnStopScan').style.display = 'inline-block';
         document.getElementById('scannerPlaceholder').style.display = 'none';
 
@@ -397,9 +398,90 @@ function stopScanner() {
     }
     isRecognizing = false;
     document.getElementById('btnStartScan').style.display = 'inline-block';
+    document.getElementById('btnCapture').style.display = 'none';
     document.getElementById('btnStopScan').style.display = 'none';
     document.getElementById('ocrStatus').style.display = 'none';
     document.getElementById('scannerPlaceholder').style.display = 'flex';
+}
+
+/** 拍照识别（手动触发，实时识别效果不好时使用） */
+async function captureAndRecognize() {
+    if (isRecognizing) {
+        showToast('正在识别中，请稍候...');
+        return;
+    }
+
+    const video = document.getElementById('scannerVideo');
+    if (!video || !video.videoWidth) {
+        showToast('相机未启动');
+        return;
+    }
+
+    // 暂停实时识别循环
+    if (ocrInterval) {
+        clearInterval(ocrInterval);
+        ocrInterval = null;
+    }
+
+    const canvas = document.getElementById('scannerCanvas');
+    const ctx = canvas.getContext('2d');
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    ctx.drawImage(video, 0, 0);
+
+    const statusEl = document.getElementById('ocrStatus');
+    const statusText = document.getElementById('ocrStatusText');
+    statusEl.style.display = 'block';
+    statusText.textContent = '正在识别照片...';
+
+    isRecognizing = true;
+
+    try {
+        let text;
+        if (ocrWorker) {
+            const { data } = await ocrWorker.recognize(canvas);
+            text = data.text;
+        } else if (typeof Tesseract !== 'undefined') {
+            const result = await Tesseract.recognize(canvas, 'eng', {
+                tessedit_char_whitelist: 'ABCDE0123456789.-:()（） ',
+                preserve_interword_spaces: '1'
+            });
+            text = result.data.text;
+        } else {
+            throw new Error('识别引擎未加载');
+        }
+
+        console.log('拍照识别结果:', text);
+
+        const tickets = Lottery.parseTicketsFromText(text);
+
+        if (tickets.length === 0) {
+            statusText.textContent = '未识别到有效号码，请调整位置后重试';
+            setTimeout(() => {
+                statusEl.style.display = 'none';
+                // 恢复实时识别循环
+                if (Scanner.scanning) startOCRLoop();
+            }, 2000);
+            return;
+        }
+
+        // 识别成功，停止扫描
+        stopScanner();
+        const multiResult = Lottery.checkMultipleTickets(tickets);
+        renderMultiResult(multiResult);
+        showToast(`成功识别 ${tickets.length} 注号码`);
+
+    } catch(e) {
+        console.error('拍照识别失败:', e);
+        statusText.textContent = '识别失败：' + e.message;
+        setTimeout(() => {
+            statusEl.style.display = 'none';
+            // 恢复实时识别循环
+            if (Scanner.scanning) startOCRLoop();
+        }, 2000);
+    } finally {
+        isRecognizing = false;
+    }
 }
 
 /** 渲染多注识别结果 */
