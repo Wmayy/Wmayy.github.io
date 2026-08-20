@@ -1093,3 +1093,28 @@ body {
     }
 }
 
+/* 提示框 */
+.alert {
+    padding: 10px 14px;
+    border-radius: 8px;
+    font-size: 13px;
+    line-height: 1.5;
+    margin-bottom: 12px;
+}
+
+.alert-warning {
+    background: #fff8e6;
+    border: 1px solid #ffd54f;
+    color: #8a6d00;
+}
+
+.alert-info {
+    background: #e3f2fd;
+    border: 1px solid #90caf9;
+    color: #1565c0;
+}
+
+.alert strong {
+    font-weight: 600;
+}
+

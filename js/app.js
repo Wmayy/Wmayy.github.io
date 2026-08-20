@@ -93,6 +93,27 @@ function switchPage(page) {
     window.scrollTo(0, 0);
 }
 
+/** 跳转到手动验票（从首页快捷入口） */
+function goToManualCheck() {
+    switchPage('scan');
+    // 延迟滚动到手动输入区域
+    setTimeout(() => {
+        const section = document.getElementById('manualCheckSection');
+        if (section) {
+            section.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            // 高亮提示
+            section.style.transition = 'box-shadow 0.3s';
+            section.style.boxShadow = '0 0 0 3px rgba(196, 30, 58, 0.3)';
+            setTimeout(() => {
+                section.style.boxShadow = 'none';
+            }, 1500);
+        }
+        // 聚焦第一个输入框
+        const firstInput = document.querySelector('#redInputs input');
+        if (firstInput) firstInput.focus();
+    }, 300);
+}
+
 /** 渲染最新开奖 */
 function renderLatest() {
     const latest = Lottery.getLatest();

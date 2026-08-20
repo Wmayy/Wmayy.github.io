@@ -55,6 +55,10 @@
                     <div class="action-icon">📷</div>
                     <div class="action-label">扫码验票</div>
                 </div>
+                <div class="action-item" onclick="goToManualCheck()">
+                    <div class="action-icon">✏️</div>
+                    <div class="action-label">手动验票</div>
+                </div>
                 <div class="action-item" onclick="switchPage('recommend')">
                     <div class="action-icon">🎯</div>
                     <div class="action-label">智能选号</div>
@@ -62,10 +66,6 @@
                 <div class="action-item" onclick="switchPage('history')">
                     <div class="action-icon">📊</div>
                     <div class="action-label">历史开奖</div>
-                </div>
-                <div class="action-item" onclick="switchPage('manual')">
-                    <div class="action-icon">✏️</div>
-                    <div class="action-label">手动选号</div>
                 </div>
             </div>
 
@@ -101,7 +101,9 @@
                 <div class="card-header">
                     <span class="card-title">扫码验票</span>
                 </div>
-                <p class="tip-text">将彩票二维码/条码对准扫描框，或手动输入号码</p>
+                <div class="alert alert-warning" style="margin-bottom:12px;">
+                    ⚠️ 双色球彩票底部的是<strong>防伪数据码</strong>，不是标准二维码，手机扫码无法识别。请直接在下方<strong>手动输入号码</strong>验票。
+                </div>
                 <div class="scanner-container" id="scannerContainer">
                     <video id="scannerVideo" playsinline></video>
                     <canvas id="scannerCanvas" style="display:none"></canvas>
@@ -110,20 +112,21 @@
                     </div>
                     <div class="scanner-placeholder" id="scannerPlaceholder">
                         <div class="placeholder-icon">📷</div>
-                        <div>点击下方按钮启动相机</div>
+                        <div>扫码功能仅支持标准二维码</div>
+                        <div style="font-size:12px;color:#999;margin-top:4px;">彩票防伪码无法识别，请用下方手动输入</div>
                     </div>
                 </div>
                 <div class="scanner-actions">
-                    <button class="btn-primary" id="btnStartScan" onclick="startScanner()">启动扫码</button>
+                    <button class="btn-secondary" id="btnStartScan" onclick="startScanner()">尝试扫码</button>
                     <button class="btn-secondary" id="btnStopScan" onclick="stopScanner()" style="display:none">停止扫码</button>
                 </div>
-                <div class="divider"><span>或手动输入</span></div>
-                <div class="manual-input">
+                <div class="divider"><span>手动输入号码验票</span></div>
+                <div class="manual-input" id="manualCheckSection">
                     <div class="input-label">红球（6个，1-33）</div>
                     <div class="ball-inputs" id="redInputs"></div>
                     <div class="input-label">蓝球（1个，1-16）</div>
                     <div class="ball-inputs single" id="blueInput"></div>
-                    <button class="btn-primary full" onclick="checkManualTicket()">查验中奖</button>
+                    <button class="btn-primary full" onclick="checkManualTicket()">🔍 立即查验中奖</button>
                 </div>
                 <div class="result-card" id="scanResult" style="display:none">
                     <div class="result-title" id="resultTitle">--</div>
