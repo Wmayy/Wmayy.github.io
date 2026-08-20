@@ -277,88 +277,129 @@ function showScanResult(result, myRed, myBlue, draw) {
     card.scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
 
-/** 启动扫码 */
+// OCR实时识别相关变量
+let ocrInterval = null;
+let isRecognizing = false;
+let ocrWorker = null;
+
+/** 启动扫码（实时OCR识别） */
 async function startScanner() {
     const result = await Scanner.start();
     if (result.success) {
         document.getElementById('btnStartScan').style.display = 'none';
-        document.getElementById('btnCapture').style.display = 'inline-block';
         document.getElementById('btnStopScan').style.display = 'inline-block';
+        document.getElementById('scannerPlaceholder').style.display = 'none';
+
+        // 初始化 OCR worker（预加载，提高首次识别速度）
+        initOCRWorker();
+
+        // 启动实时识别循环
+        startOCRLoop();
     } else {
         showToast(result.message);
+    }
+}
+
+/** 初始化 OCR Worker */
+async function initOCRWorker() {
+    if (ocrWorker || typeof Tesseract === 'undefined') return;
+    try {
+        ocrWorker = await Tesseract.createWorker('eng', 1, {
+            logger: m => {}
+        });
+        await ocrWorker.setParameters({
+            tessedit_char_whitelist: 'ABCDE0123456789.-:()（） ',
+            preserve_interword_spaces: '1'
+        });
+    } catch(e) {
+        console.warn('OCR Worker初始化失败，将使用单次识别模式', e);
+    }
+}
+
+/** 启动实时识别循环 */
+function startOCRLoop() {
+    if (ocrInterval) return;
+    const statusEl = document.getElementById('ocrStatus');
+    const statusText = document.getElementById('ocrStatusText');
+    statusEl.style.display = 'block';
+    statusText.textContent = '正在扫描识别，请对准号码区域...';
+
+    // 每1.5秒识别一次（OCR比较耗时，不能太频繁）
+    ocrInterval = setInterval(() => {
+        if (!isRecognizing && Scanner.scanning) {
+            recognizeFrame();
+        }
+    }, 1500);
+}
+
+/** 识别当前视频帧 */
+async function recognizeFrame() {
+    const video = document.getElementById('scannerVideo');
+    if (!video || !video.videoWidth) return;
+
+    isRecognizing = true;
+    const statusText = document.getElementById('ocrStatusText');
+
+    try {
+        const canvas = document.getElementById('scannerCanvas');
+        const ctx = canvas.getContext('2d');
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        ctx.drawImage(video, 0, 0);
+
+        statusText.textContent = '识别中...';
+
+        let text;
+        if (ocrWorker) {
+            // 使用预加载的 worker，速度更快
+            const { data } = await ocrWorker.recognize(canvas);
+            text = data.text;
+        } else if (typeof Tesseract !== 'undefined') {
+            // 单次识别模式
+            const result = await Tesseract.recognize(canvas, 'eng', {
+                tessedit_char_whitelist: 'ABCDE0123456789.-:()（） ',
+                preserve_interword_spaces: '1'
+            });
+            text = result.data.text;
+        } else {
+            throw new Error('识别引擎未加载');
+        }
+
+        // 解析彩票号码
+        const tickets = Lottery.parseTicketsFromText(text);
+
+        if (tickets.length > 0) {
+            // 识别到有效号码，停止扫描
+            stopScanner();
+            const multiResult = Lottery.checkMultipleTickets(tickets);
+            renderMultiResult(multiResult);
+            showToast(`成功识别 ${tickets.length} 注号码`);
+            return;
+        }
+
+        statusText.textContent = '正在扫描识别，请对准号码区域...';
+
+    } catch(e) {
+        console.warn('帧识别失败:', e);
+        statusText.textContent = '扫描中...';
+    } finally {
+        isRecognizing = false;
     }
 }
 
 /** 停止扫码 */
 function stopScanner() {
     Scanner.stop();
-    document.getElementById('btnStartScan').style.display = 'inline-block';
-    document.getElementById('btnCapture').style.display = 'none';
-    document.getElementById('btnStopScan').style.display = 'none';
-}
-
-/** 拍照并OCR识别 */
-async function captureAndRecognize() {
-    const video = document.getElementById('scannerVideo');
-    const canvas = document.getElementById('scannerCanvas');
-    const ctx = canvas.getContext('2d');
-
-    // 设置画布尺寸
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    ctx.drawImage(video, 0, 0);
-
-    // 显示识别状态
-    const statusEl = document.getElementById('ocrStatus');
-    const statusText = document.getElementById('ocrStatusText');
-    statusEl.style.display = 'block';
-    statusText.textContent = '正在加载识别引擎...';
-
-    try {
-        // 检查 Tesseract 是否加载
-        if (typeof Tesseract === 'undefined') {
-            throw new Error('识别引擎加载失败，请检查网络');
-        }
-
-        statusText.textContent = '正在识别文字，请稍候...';
-
-        // 使用 Tesseract 识别数字（只识别数字和字母，提高速度和准确率）
-        const result = await Tesseract.recognize(canvas, 'eng', {
-            logger: m => {
-                if (m.status === 'recognizing text') {
-                    statusText.textContent = `识别中... ${Math.round(m.progress * 100)}%`;
-                }
-            },
-            tessedit_char_whitelist: 'ABCDE0123456789.-:()（） ',
-            preserve_interword_spaces: '1'
-        });
-
-        const text = result.data.text;
-        console.log('OCR识别结果:', text);
-
-        statusText.textContent = '正在解析号码...';
-
-        // 解析彩票号码
-        const tickets = Lottery.parseTicketsFromText(text);
-
-        if (tickets.length === 0) {
-            statusEl.style.display = 'none';
-            showToast('未能识别到有效号码，请对准号码区域重新拍摄');
-            return;
-        }
-
-        // 多注验票
-        const multiResult = Lottery.checkMultipleTickets(tickets);
-        renderMultiResult(multiResult);
-
-        statusEl.style.display = 'none';
-        showToast(`成功识别 ${tickets.length} 注号码`);
-
-    } catch(e) {
-        console.error('OCR识别失败:', e);
-        statusEl.style.display = 'none';
-        showToast('识别失败：' + e.message);
+    // 停止识别循环
+    if (ocrInterval) {
+        clearInterval(ocrInterval);
+        ocrInterval = null;
     }
+    isRecognizing = false;
+    document.getElementById('btnStartScan').style.display = 'inline-block';
+    document.getElementById('btnStopScan').style.display = 'none';
+    document.getElementById('ocrStatus').style.display = 'none';
+    document.getElementById('scannerPlaceholder').style.display = 'flex';
 }
 
 /** 渲染多注识别结果 */
