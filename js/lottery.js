@@ -764,10 +764,39 @@ const Lottery = {
         return { hot, cold, period, totalDraws: recent.length };
     },
 
-    /** 保存我的选号 */
-    saveTicket(red, blue) {
+    /** 计算下一期期号 */
+    getNextIssue(currentIssue) {
+        if (!currentIssue || !/^\d{7}$/.test(String(currentIssue))) return null;
+        const year = parseInt(String(currentIssue).slice(0, 4));
+        const num = parseInt(String(currentIssue).slice(4));
+        let nextYear = year;
+        let nextNum = num + 1;
+        // 双色球每年约153期，超过则跨年
+        if (nextNum > 153) {
+            nextYear = year + 1;
+            nextNum = 1;
+        }
+        return `${nextYear}${String(nextNum).padStart(3, '0')}`;
+    },
+
+    /** 保存我的选号/推荐号码 */
+    saveTicket(red, blue, source = 'manual') {
         const saved = this.getSavedTickets();
-        saved.unshift({ red: [...red].sort((a,b)=>a-b), blue, time: Date.now() });
+        const latest = this.getLatest();
+        const currentIssue = latest ? latest.issue : null;
+        const targetIssue = this.getNextIssue(currentIssue);
+
+        saved.unshift({
+            red: [...red].sort((a,b)=>a-b),
+            blue,
+            time: Date.now(),
+            source: source, // 'manual' 手动选号, 'recommend' 推荐号码
+            drawIssue: currentIssue, // 保存时的最新开奖期号
+            targetIssue: targetIssue, // 目标验证期号（下一期）
+            checked: false, // 是否已检查过中奖
+            expired: false, // 是否已过期（错过目标期）
+            prizeResult: null // 中奖结果
+        });
         localStorage.setItem(this.SAVED_KEY, JSON.stringify(saved));
         return saved;
     },
@@ -787,5 +816,108 @@ const Lottery = {
         saved.splice(index, 1);
         localStorage.setItem(this.SAVED_KEY, JSON.stringify(saved));
         return saved;
-    }
+    },
+
+    /**
+     * 检查所有保存的号码是否中奖
+     * 只在目标期号开奖时检查，过期则标记为过期不再提醒
+     * @returns {Object} {newWins: [], allChecked: bool}
+     */
+    checkSavedTicketsPrize() {
+        const saved = this.getSavedTickets();
+        const latest = this.getLatest();
+        if (!latest || saved.length === 0) {
+            return { newWins: [], allChecked: true, total: saved.length };
+        }
+
+        const newWins = [];
+        let updated = false;
+
+        saved.forEach((ticket, idx) => {
+            // 已检查或已过期的跳过
+            if (ticket.checked || ticket.expired) return;
+
+            // 兼容旧数据：没有 targetIssue 的，用 drawIssue + 1 推断
+            if (!ticket.targetIssue && ticket.drawIssue) {
+                ticket.targetIssue = this.getNextIssue(ticket.drawIssue);
+            }
+
+            // 没有目标期号的（保存时无数据），用旧逻辑：drawIssue !== latest.issue
+            if (!ticket.targetIssue) {
+                if (ticket.drawIssue !== latest.issue) {
+                    const result = this.checkPrize(ticket.red, ticket.blue, latest);
+                    ticket.checked = true;
+                    ticket.prizeResult = {
+                        level: result.level,
+                        levelName: result.levelName,
+                        win: result.win,
+                        redMatch: result.redMatch,
+                        blueMatch: result.blueMatch,
+                        prize: result.prize,
+                        drawIssue: latest.issue,
+                        drawDate: latest.date
+                    };
+                    updated = true;
+                    if (result.win) {
+                        newWins.push({ index: idx, ticket, result: ticket.prizeResult });
+                    }
+                }
+                return;
+            }
+
+            // 有目标期号的新逻辑
+            const targetIssue = ticket.targetIssue;
+            const latestIssue = latest.issue;
+
+            if (latestIssue === targetIssue) {
+                // 目标期已开奖，检查中奖
+                const result = this.checkPrize(ticket.red, ticket.blue, latest);
+                ticket.checked = true;
+                ticket.prizeResult = {
+                    level: result.level,
+                    levelName: result.levelName,
+                    win: result.win,
+                    redMatch: result.redMatch,
+                    blueMatch: result.blueMatch,
+                    prize: result.prize,
+                    drawIssue: latest.issue,
+                    drawDate: latest.date
+                };
+                updated = true;
+                if (result.win) {
+                    newWins.push({ index: idx, ticket, result: ticket.prizeResult });
+                }
+            } else if (latestIssue > targetIssue) {
+                // 已过期（错过目标期），标记为过期，不再提醒
+                ticket.expired = true;
+                ticket.checked = true;
+                ticket.prizeResult = {
+                    level: 0,
+                    levelName: '已过期',
+                    win: false,
+                    redMatch: 0,
+                    blueMatch: 0,
+                    prize: 0,
+                    drawIssue: targetIssue,
+                    drawDate: '--',
+                    expired: true
+                };
+                updated = true;
+            }
+            // latestIssue < targetIssue：还没到目标期，不检查
+        });
+
+        if (updated) {
+            localStorage.setItem(this.SAVED_KEY, JSON.stringify(saved));
+        }
+
+        const allChecked = saved.every(t => t.checked || t.expired);
+        return { newWins, allChecked, total: saved.length, winCount: newWins.length };
+    },
+
+    /** 获取所有中奖的保存号码 */
+    getWinningTickets() {
+        const saved = this.getSavedTickets();
+        return saved.filter(t => t.prizeResult && t.prizeResult.win);
+    },
 };

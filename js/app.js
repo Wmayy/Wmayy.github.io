@@ -23,7 +23,85 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // 智能判断是否需要自动刷新
     smartAutoRefresh();
+
+    // 检查保存的号码是否中奖（延迟1秒，等数据加载完成）
+    setTimeout(() => {
+        checkAndShowPrizeAlert();
+    }, 1000);
 });
+
+/** 检查保存的号码是否中奖并弹窗提示 */
+function checkAndShowPrizeAlert() {
+    const result = Lottery.checkSavedTicketsPrize();
+    if (result.newWins && result.newWins.length > 0) {
+        showPrizeAlertModal(result.newWins);
+    }
+}
+
+/** 显示中奖弹窗 */
+function showPrizeAlertModal(wins) {
+    const modal = document.getElementById('prizeAlertModal');
+    const body = document.getElementById('prizeAlertBody');
+
+    let html = '';
+    let totalPrize = 0;
+    let hasFloating = false;
+
+    wins.forEach((win, idx) => {
+        const ticket = win.ticket;
+        const prize = win.result;
+
+        const redBalls = ticket.red.map(n =>
+            `<span class="ball red" style="width:26px;height:26px;font-size:12px;">${String(n).padStart(2,'0')}</span>`
+        ).join('');
+        const blueBall = `<span class="ball blue" style="width:26px;height:26px;font-size:12px;">${String(ticket.blue).padStart(2,'0')}</span>`;
+
+        let prizeDisplay = '';
+        if (prize.prize === '浮动') {
+            prizeDisplay = '浮动奖金（以官方公告为准）';
+            hasFloating = true;
+        } else if (prize.prize > 0) {
+            prizeDisplay = prize.prize + ' 元';
+            totalPrize += prize.prize;
+        }
+
+        const sourceLabel = ticket.source === 'recommend' ? '推荐号码' : '手动选号';
+
+        html += `
+            <div class="prize-alert-item">
+                <div class="prize-alert-item-header">
+                    <span class="prize-level-badge ${prize.level <= 2 ? 'jackpot' : 'win'}">${prize.levelName}</span>
+                    <span class="prize-source">${sourceLabel}</span>
+                </div>
+                <div class="prize-alert-balls">${redBalls} + ${blueBall}</div>
+                <div class="prize-alert-detail">
+                    命中红球 ${prize.redMatch} 个，蓝球 ${prize.blueMatch} 个
+                </div>
+                <div class="prize-alert-amount">${prizeDisplay}</div>
+                <div class="prize-alert-draw">开奖期号：第 ${prize.drawIssue} 期（${prize.drawDate}）</div>
+            </div>
+        `;
+    });
+
+    // 汇总
+    let summaryHtml = '';
+    if (wins.length > 1) {
+        summaryHtml = `<div class="prize-alert-summary">
+            共中奖 ${wins.length} 注，
+            ${hasFloating ? '含浮动奖金，' : ''}
+            固定奖金合计 <strong>${totalPrize} 元</strong>
+        </div>`;
+    }
+
+    body.innerHTML = html + summaryHtml;
+    modal.classList.add('show');
+}
+
+/** 关闭中奖弹窗 */
+function closePrizeAlert(event) {
+    if (event && event.target !== event.currentTarget) return;
+    document.getElementById('prizeAlertModal').classList.remove('show');
+}
 
 /** 智能自动刷新：根据日期判断是否需要获取最新数据 */
 function smartAutoRefresh() {
@@ -81,7 +159,15 @@ function switchPage(page) {
     if (navItem) navItem.classList.add('active');
 
     // 页面特定初始化
-    if (page === 'history') renderHistory();
+    if (page === 'history') {
+        // 判断当前激活的是哪个标签
+        const activeTab = document.querySelector('.tab-switch .tab-item.active');
+        if (activeTab && activeTab.textContent.includes('我的选号')) {
+            renderMineTickets();
+        } else {
+            renderHistory();
+        }
+    }
     if (page === 'recommend') renderHotCold();
     if (page === 'manual') renderSavedTickets();
 
@@ -569,6 +655,20 @@ function generateRecommendations() {
         count, filterHistory, trendWeight, excludeConsecutive, excludeOddEven
     });
 
+    // 检查每注是否已保存（同一期）
+    const saved = Lottery.getSavedTickets();
+    const latest = Lottery.getLatest();
+    const currentIssue = latest ? latest.issue : null;
+
+    recommendations.forEach(rec => {
+        const redKey = rec.red.join(',');
+        rec.saved = saved.some(t =>
+            t.drawIssue === currentIssue &&
+            t.red.join(',') === redKey &&
+            t.blue === rec.blue
+        );
+    });
+
     const listEl = document.getElementById('recommendList');
 
     if (recommendations.length === 0) {
@@ -589,18 +689,137 @@ function generateRecommendations() {
             if (tag === 'safe') tagsHtml += '<span class="recommend-tag tag-safe">安全组合</span>';
             if (tag === 'trend') tagsHtml += '<span class="recommend-tag tag-trend">趋势加权</span>';
         });
+        if (rec.saved) {
+            tagsHtml += '<span class="recommend-tag tag-saved">✓ 已保存</span>';
+        }
+
+        const redStr = rec.red.join(',');
+        const blueStr = rec.blue;
+
+        let saveBtnHtml = '';
+        if (rec.saved) {
+            saveBtnHtml = `<button class="btn-save-recommend saved" disabled>✓ 本期已保存</button>`;
+        } else {
+            saveBtnHtml = `<button class="btn-save-recommend" onclick="saveRecommendation(${idx}, [${redStr}], ${blueStr})">💾 保存此注</button>`;
+        }
 
         html += `
-            <div class="recommend-item">
+            <div class="recommend-item ${rec.saved ? 'recommend-saved' : ''}">
                 <div class="recommend-index">第 ${idx + 1} 注</div>
                 <div class="recommend-balls">${ballsHtml}</div>
                 ${tagsHtml}
+                <div class="recommend-actions">
+                    ${saveBtnHtml}
+                </div>
             </div>
         `;
     });
 
+    // 统计未保存的数量
+    const unsavedCount = recommendations.filter(r => !r.saved).length;
+
+    // 添加保存全部按钮（如果有未保存的）
+    if (unsavedCount > 0) {
+        html += `
+            <div class="save-all-section">
+                <button class="btn-primary full" onclick="saveAllRecommendations()">
+                    💾 保存全部 ${unsavedCount} 注（开奖时自动提醒中奖）
+                </button>
+            </div>
+        `;
+    } else {
+        html += `
+            <div class="save-all-section">
+                <div class="all-saved-tip">✓ 本期推荐号码均已保存</div>
+            </div>
+        `;
+    }
+
+    // 缓存当前推荐，供保存全部使用
+    window._currentRecommendations = recommendations;
+
     listEl.innerHTML = html;
-    showToast(`已生成 ${recommendations.length} 注推荐号码`);
+    showToast(`已生成 ${recommendations.length} 注推荐号码${unsavedCount < recommendations.length ? `（${recommendations.length - unsavedCount}注已保存）` : ''}`);
+}
+
+/** 保存单注推荐 */
+function saveRecommendation(idx, red, blue) {
+    // 检查是否已保存（同一期）
+    const saved = Lottery.getSavedTickets();
+    const latest = Lottery.getLatest();
+    const currentIssue = latest ? latest.issue : null;
+    const redKey = red.join(',');
+
+    const exists = saved.some(t =>
+        t.drawIssue === currentIssue &&
+        t.red.join(',') === redKey &&
+        t.blue === blue
+    );
+
+    if (exists) {
+        showToast('这注号码本期已保存，不能重复保存');
+        return;
+    }
+
+    Lottery.saveTicket(red, blue, 'recommend');
+    showToast(`第 ${idx + 1} 注已保存，开奖时自动提醒中奖`);
+
+    // 更新当前推荐的 saved 状态并重新渲染
+    if (window._currentRecommendations && window._currentRecommendations[idx]) {
+        window._currentRecommendations[idx].saved = true;
+    }
+    // 延迟重新渲染，避免闪烁
+    setTimeout(() => {
+        const listEl = document.getElementById('recommendList');
+        if (listEl) generateRecommendations();
+    }, 300);
+}
+
+/** 保存全部推荐 */
+function saveAllRecommendations() {
+    if (!window._currentRecommendations || window._currentRecommendations.length === 0) {
+        showToast('没有可保存的推荐号码');
+        return;
+    }
+
+    const saved = Lottery.getSavedTickets();
+    const latest = Lottery.getLatest();
+    const currentIssue = latest ? latest.issue : null;
+
+    let newCount = 0;
+    let skipCount = 0;
+
+    window._currentRecommendations.forEach(rec => {
+        if (rec.saved) {
+            skipCount++;
+            return;
+        }
+        const redKey = rec.red.join(',');
+        const exists = saved.some(t =>
+            t.drawIssue === currentIssue &&
+            t.red.join(',') === redKey &&
+            t.blue === rec.blue
+        );
+        if (exists) {
+            skipCount++;
+            rec.saved = true;
+        } else {
+            Lottery.saveTicket(rec.red, rec.blue, 'recommend');
+            rec.saved = true;
+            newCount++;
+        }
+    });
+
+    if (newCount > 0) {
+        showToast(`已保存 ${newCount} 注${skipCount > 0 ? `，跳过 ${skipCount} 注已保存的` : ''}`);
+    } else {
+        showToast('全部号码本期均已保存');
+    }
+
+    // 重新渲染
+    setTimeout(() => {
+        generateRecommendations();
+    }, 300);
 }
 
 /** 渲染冷热号 */
@@ -660,10 +879,151 @@ function renderHistory() {
     }
 }
 
-/** 加载更多历史 */
-function loadMoreHistory() {
-    historyPage++;
-    renderHistory();
+// 我的选号筛选状态
+let mineFilter = 'all';
+
+/** 切换历史页面标签 */
+function switchHistoryTab(tab) {
+    document.querySelectorAll('.tab-switch .tab-item').forEach(t => t.classList.remove('active'));
+    document.querySelector(`.tab-item[onclick*="'${tab}'"]`).classList.add('active');
+
+    if (tab === 'draw') {
+        document.getElementById('drawHistoryTab').style.display = 'block';
+        document.getElementById('mineHistoryTab').style.display = 'none';
+        renderHistory();
+    } else {
+        document.getElementById('drawHistoryTab').style.display = 'none';
+        document.getElementById('mineHistoryTab').style.display = 'block';
+        renderMineTickets();
+    }
+}
+
+/** 渲染我的选号记录 */
+function renderMineTickets() {
+    const saved = Lottery.getSavedTickets();
+    const listEl = document.getElementById('mineList');
+    const countEl = document.getElementById('mineCount');
+    const statsEl = document.getElementById('mineStats');
+
+    countEl.textContent = `共 ${saved.length} 注`;
+
+    // 筛选
+    let filtered = saved;
+    if (mineFilter === 'recommend') {
+        filtered = saved.filter(t => t.source === 'recommend');
+    } else if (mineFilter === 'manual') {
+        filtered = saved.filter(t => t.source === 'manual');
+    } else if (mineFilter === 'pending') {
+        filtered = saved.filter(t => !t.checked && !t.expired);
+    } else if (mineFilter === 'win') {
+        filtered = saved.filter(t => t.prizeResult && t.prizeResult.win);
+    } else if (mineFilter === 'expired') {
+        filtered = saved.filter(t => t.expired);
+    }
+
+    // 统计
+    const totalCount = saved.length;
+    const winCount = saved.filter(t => t.prizeResult && t.prizeResult.win).length;
+    const totalPrize = saved.reduce((sum, t) => {
+        if (t.prizeResult && t.prizeResult.win && typeof t.prizeResult.prize === 'number') {
+            return sum + t.prizeResult.prize;
+        }
+        return sum;
+    }, 0);
+    const hasFloating = saved.some(t => t.prizeResult && t.prizeResult.win && t.prizeResult.prize === '浮动');
+
+    statsEl.innerHTML = `
+        <div class="mine-stat-item">
+            <div class="mine-stat-num">${totalCount}</div>
+            <div class="mine-stat-label">总注数</div>
+        </div>
+        <div class="mine-stat-item">
+            <div class="mine-stat-num win">${winCount}</div>
+            <div class="mine-stat-label">中奖</div>
+        </div>
+        <div class="mine-stat-item">
+            <div class="mine-stat-num">${totalPrize > 0 ? totalPrize + '元' : (hasFloating ? '含浮动' : '0元')}</div>
+            <div class="mine-stat-label">累计奖金</div>
+        </div>
+    `;
+
+    if (filtered.length === 0) {
+        listEl.innerHTML = '<div class="empty-state"><div class="empty-icon">📋</div>暂无符合条件的选号记录</div>';
+        return;
+    }
+
+    let html = '';
+    filtered.forEach((t, idx) => {
+        const originalIdx = saved.indexOf(t);
+        const redBalls = t.red.map(n =>
+            `<span class="ball red" style="width:24px;height:24px;font-size:11px;">${String(n).padStart(2,'0')}</span>`
+        ).join('');
+        const blueBall = `<span class="ball blue" style="width:24px;height:24px;font-size:11px;">${String(t.blue).padStart(2,'0')}</span>`;
+
+        const sourceLabel = t.source === 'recommend' ? '🎯 推荐' : '✏️ 手动';
+        const saveDate = new Date(t.time).toLocaleDateString('zh-CN');
+
+        let statusBadge = '';
+        let itemClass = 'mine-ticket-item';
+
+        if (t.expired) {
+            itemClass += ' mine-expired';
+            statusBadge = `<span class="mine-status expired">已过期</span>`;
+        } else if (t.checked && t.prizeResult) {
+            if (t.prizeResult.win) {
+                itemClass += ' mine-win';
+                let prizeText = t.prizeResult.prize === '浮动' ? '浮动奖金' : t.prizeResult.prize + '元';
+                statusBadge = `<span class="mine-status win">${t.prizeResult.levelName} ${prizeText}</span>`;
+            } else {
+                statusBadge = `<span class="mine-status lose">未中奖</span>`;
+            }
+        } else {
+            const targetText = t.targetIssue ? `第${t.targetIssue}期开奖` : '等待开奖';
+            statusBadge = `<span class="mine-status pending">等待${targetText}</span>`;
+        }
+
+        let drawInfo = '';
+        if (t.targetIssue && !t.checked && !t.expired) {
+            drawInfo = `<div class="mine-draw-info">目标期号：第 ${t.targetIssue} 期（仅参与本期验证）</div>`;
+        } else if (t.prizeResult && t.prizeResult.drawIssue) {
+            drawInfo = `<div class="mine-draw-info">开奖期号：第 ${t.prizeResult.drawIssue} 期${t.prizeResult.drawDate !== '--' ? `（${t.prizeResult.drawDate}）` : ''}</div>`;
+        } else if (t.drawIssue) {
+            drawInfo = `<div class="mine-draw-info">保存期号：第 ${t.drawIssue} 期</div>`;
+        }
+
+        html += `
+            <div class="${itemClass}">
+                <div class="mine-ticket-header">
+                    <span class="mine-source">${sourceLabel}</span>
+                    <span class="mine-date">${saveDate}</span>
+                    ${statusBadge}
+                    <span class="mine-delete" onclick="deleteMineTicket(${originalIdx})">×</span>
+                </div>
+                <div class="mine-ticket-balls">${redBalls} + ${blueBall}</div>
+                ${drawInfo}
+            </div>
+        `;
+    });
+
+    listEl.innerHTML = html;
+}
+
+/** 筛选我的选号 */
+function filterMineTickets(filter) {
+    mineFilter = filter;
+    document.querySelectorAll('.mine-filter .filter-btn').forEach(b => b.classList.remove('active'));
+    document.querySelector(`.filter-btn[onclick*="'${filter}'"]`).classList.add('active');
+    renderMineTickets();
+}
+
+/** 删除我的选号 */
+function deleteMineTicket(index) {
+    if (confirm('确定删除这注选号记录吗？')) {
+        Lottery.deleteTicket(index);
+        renderMineTickets();
+        renderSavedTickets();
+        showToast('已删除');
+    }
 }
 
 /** 初始化号码选择器 */
@@ -788,17 +1148,37 @@ function renderSavedTickets() {
         return;
     }
 
-    let html = '<div class="input-label" style="margin-top:16px;">已保存的选号</div>';
+    let html = '<div class="input-label" style="margin-top:16px;">已保存的选号（开奖时自动提醒中奖）</div>';
     saved.forEach((t, idx) => {
         let ballsHtml = t.red.map(n =>
             `<span class="ball red" style="width:24px;height:24px;font-size:11px;display:inline-flex;">${String(n).padStart(2,'0')}</span>`
         ).join('');
         ballsHtml += `<span class="ball blue" style="width:24px;height:24px;font-size:11px;display:inline-flex;">${String(t.blue).padStart(2,'0')}</span>`;
 
+        const sourceLabel = t.source === 'recommend' ? '推荐' : '手动';
+        let prizeBadge = '';
+        let itemClass = 'saved-item';
+
+        if (t.checked && t.prizeResult) {
+            if (t.prizeResult.win) {
+                itemClass += ' saved-win';
+                let prizeText = t.prizeResult.prize === '浮动' ? '浮动' : t.prizeResult.prize + '元';
+                prizeBadge = `<span class="saved-prize-badge win">${t.prizeResult.levelName} ${prizeText}</span>`;
+            } else {
+                prizeBadge = `<span class="saved-prize-badge lose">未中奖</span>`;
+            }
+        } else {
+            prizeBadge = `<span class="saved-prize-badge pending">等待开奖</span>`;
+        }
+
         html += `
-            <div class="saved-item">
+            <div class="${itemClass}">
+                <div class="saved-header">
+                    <span class="saved-source">${sourceLabel}</span>
+                    ${prizeBadge}
+                    <span class="saved-delete" onclick="deleteSaved(${idx})">×</span>
+                </div>
                 <div class="saved-balls">${ballsHtml}</div>
-                <span class="saved-delete" onclick="deleteSaved(${idx})">×</span>
             </div>
         `;
     });
