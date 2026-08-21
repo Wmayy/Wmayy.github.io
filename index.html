@@ -219,15 +219,49 @@
 
         <!-- 页面：历史开奖 -->
         <section class="page" id="page-history">
-            <div class="card">
-                <div class="card-header">
-                    <span class="card-title">历史开奖记录</span>
-                    <span class="data-count" id="historyCount">共 0 期</span>
+            <!-- 标签切换 -->
+            <div class="tab-switch">
+                <div class="tab-item active" onclick="switchHistoryTab('draw')">开奖历史</div>
+                <div class="tab-item" onclick="switchHistoryTab('mine')">我的选号</div>
+            </div>
+
+            <!-- 开奖历史 -->
+            <div class="history-tab-content" id="drawHistoryTab">
+                <div class="card">
+                    <div class="card-header">
+                        <span class="card-title">历史开奖记录</span>
+                        <span class="data-count" id="historyCount">共 0 期</span>
+                    </div>
+                    <div class="history-list" id="historyList">
+                        <div class="loading-text">加载中...</div>
+                    </div>
+                    <button class="btn-secondary full" id="btnLoadMore" onclick="loadMoreHistory()" style="display:none">加载更多</button>
                 </div>
-                <div class="history-list" id="historyList">
-                    <div class="loading-text">加载中...</div>
+            </div>
+
+            <!-- 我的选号 -->
+            <div class="history-tab-content" id="mineHistoryTab" style="display:none">
+                <div class="card">
+                    <div class="card-header">
+                        <span class="card-title">我的选号记录</span>
+                        <span class="data-count" id="mineCount">共 0 注</span>
+                    </div>
+                    <!-- 筛选 -->
+                    <div class="mine-filter">
+                        <button class="filter-btn active" onclick="filterMineTickets('all')">全部</button>
+                        <button class="filter-btn" onclick="filterMineTickets('recommend')">推荐</button>
+                        <button class="filter-btn" onclick="filterMineTickets('manual')">手动</button>
+                        <button class="filter-btn" onclick="filterMineTickets('pending')">待开奖</button>
+                        <button class="filter-btn" onclick="filterMineTickets('win')">中奖</button>
+                        <button class="filter-btn" onclick="filterMineTickets('expired')">已过期</button>
+                    </div>
+                    <!-- 统计 -->
+                    <div class="mine-stats" id="mineStats"></div>
+                    <!-- 列表 -->
+                    <div class="mine-list" id="mineList">
+                        <div class="empty-state"><div class="empty-icon">📋</div>暂无保存的选号记录<br>在智能选号页面生成推荐后点击保存，或在手动选号页面保存号码</div>
+                    </div>
                 </div>
-                <button class="btn-secondary full" id="btnLoadMore" onclick="loadMoreHistory()" style="display:none">加载更多</button>
             </div>
         </section>
 
@@ -304,6 +338,22 @@
                     <div class="ball-inputs single" id="manualBlueInput"></div>
                     <button class="btn-primary full" onclick="submitManualUpdate()">确认更新</button>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 中奖提示弹窗 -->
+    <div class="modal-overlay" id="prizeAlertModal" onclick="closePrizeAlert(event)">
+        <div class="modal-content prize-alert-content" onclick="event.stopPropagation()">
+            <div class="prize-alert-header">
+                <div class="prize-alert-icon">🎉</div>
+                <div class="prize-alert-title">恭喜中奖！</div>
+            </div>
+            <div class="modal-body" id="prizeAlertBody">
+                <!-- 中奖详情动态填充 -->
+            </div>
+            <div class="prize-alert-actions">
+                <button class="btn-primary full" onclick="closePrizeAlert()">我知道了</button>
             </div>
         </div>
     </div>

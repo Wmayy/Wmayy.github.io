@@ -1,4 +1,4 @@
-const CACHE_NAME = 'ssq-helper-v13';
+const CACHE_NAME = 'ssq-helper-v17';
 const ASSETS = [
     './',
     './index.html',
